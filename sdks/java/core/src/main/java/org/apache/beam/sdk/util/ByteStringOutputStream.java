@@ -22,6 +22,7 @@ import javax.annotation.concurrent.NotThreadSafe;
 import org.apache.beam.vendor.grpc.v1p60p1.com.google.protobuf.ByteString;
 import org.apache.beam.vendor.grpc.v1p60p1.com.google.protobuf.UnsafeByteOperations;
 import org.apache.beam.vendor.guava.v32_1_2_jre.com.google.common.base.Preconditions;
+import org.slf4j.LoggerFactory;
 
 /**
  * An {@link OutputStream} that produces {@link ByteString}s.
@@ -45,6 +46,8 @@ public final class ByteStringOutputStream extends OutputStream {
   //
   // This number should be tuned periodically as hardware changes.
   private static final int MAX_CHUNK_SIZE = 256 * 1024;
+
+  private final Logger logger = LoggerFactory.getLogger(ByteStringOutputStream.class);
 
   // ByteString to be concatenated to create the result
   private ByteString result;
@@ -87,21 +90,33 @@ public final class ByteStringOutputStream extends OutputStream {
   @Override
   public void write(byte[] b, int offset, int length) {
     int remainingSpaceInBuffer = buffer.length - bufferPos;
-    while (length > remainingSpaceInBuffer) {
-      // Use up the current buffer
-      System.arraycopy(b, offset, buffer, bufferPos, remainingSpaceInBuffer);
-      offset += remainingSpaceInBuffer;
-      length -= remainingSpaceInBuffer;
-
-      result = result.concat(UnsafeByteOperations.unsafeWrap(buffer));
-      // We want to increase our total capacity but not larger than the max chunk size.
-      remainingSpaceInBuffer = Math.min(Math.max(length, result.size()), MAX_CHUNK_SIZE);
-      buffer = new byte[remainingSpaceInBuffer];
-      bufferPos = 0;
+    if (length < 0) {
+      throw new RuntimeException("Glean mod: write called with length < 0" + length);
     }
 
-    System.arraycopy(b, offset, buffer, bufferPos, length);
-    bufferPos += length;
+    while (length > remainingSpaceInBuffer) {
+      // Use up the current buffer
+      if (remainingSpaceInBuffer >= 0) {
+        System.arraycopy(b, offset, buffer, bufferPos, remainingSpaceInBuffer);
+        offset += remainingSpaceInBuffer;
+        length -= remainingSpaceInBuffer;
+        result = result.concat(UnsafeByteOperations.unsafeWrap(buffer));
+        // We want to increase our total capacity but not larger than the max chunk size.
+        remainingSpaceInBuffer = Math.min(Math.max(length, result.size()), MAX_CHUNK_SIZE);
+        buffer = new byte[remainingSpaceInBuffer];
+        bufferPos = 0;
+      } else {
+        throw new RuntimeException("Glean mod: remainingSpaceInBuffer < 0: " + remainingSpaceInBuffer);
+      }
+    }
+
+    if (length > 0) {
+      // Copy the remainder into the buffer
+      System.arraycopy(b, offset, buffer, bufferPos, length);
+      bufferPos += length;
+    } else {
+      logger.warn("Glean mod: arraycopy called with length <= 0: {}, offset: {}, buffer length: {}, bufferPos: {}", length, offset, buffer.length, bufferPos);
+    }
   }
 
   /**

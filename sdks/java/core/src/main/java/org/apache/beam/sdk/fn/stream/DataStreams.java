@@ -30,6 +30,8 @@ import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.fn.data.WeightedList;
 import org.apache.beam.sdk.util.ByteStringOutputStream;
 import org.apache.beam.vendor.grpc.v1p60p1.com.google.protobuf.ByteString;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * {@link DataStreamDecoder} treats multiple {@link ByteString}s as a single input stream decoding
@@ -41,7 +43,7 @@ import org.apache.beam.vendor.grpc.v1p60p1.com.google.protobuf.ByteString;
   "nullness" // TODO(https://github.com/apache/beam/issues/20497)
 })
 public class DataStreams {
-  public static final int DEFAULT_OUTBOUND_BUFFER_LIMIT_BYTES = 1_000_000;
+  public static final int DEFAULT_OUTBOUND_BUFFER_LIMIT_BYTES = 1_048_576;
 
   /** The number of bytes to add to cache estimates for each element in the weighted list. */
   private static final long BYTES_LIST_ELEMENT_OVERHEAD = 8L;
@@ -84,6 +86,9 @@ public class DataStreams {
    * <p>Note that users must invoke {@link #delimitElement} at each element boundary.
    */
   public static final class ElementDelimitedOutputStream extends OutputStream {
+
+    private final Logger logger = LoggerFactory.getLogger(ElementDelimitedOutputStream.class);
+
     private final OutputChunkConsumer<ByteString> consumer;
     private final ByteStringOutputStream output;
     private final int maximumChunkSize;
@@ -115,23 +120,30 @@ public class DataStreams {
 
     @Override
     public void write(byte[] b, int offset, int length) throws IOException {
-      int spaceRemaining = maximumChunkSize - output.size();
+      int spaceRemaining = Math.max(maximumChunkSize - output.size(), 0);
       // Fill the first partially filled buffer.
-      if (length > spaceRemaining) {
-        output.write(b, offset, spaceRemaining);
-        offset += spaceRemaining;
-        length -= spaceRemaining;
-        internalFlush();
+      try {
+        if (length > spaceRemaining) {
+          output.write(b, offset, spaceRemaining);
+          offset += spaceRemaining;
+          length -= spaceRemaining;
+          internalFlush();
+        }
+        // Fill buffers completely.
+        while (length > maximumChunkSize) {
+          output.write(b, offset, maximumChunkSize);
+          offset += maximumChunkSize;
+          length -= maximumChunkSize;
+          internalFlush();
+        }
+        if (length > 0) {
+          // Fill any remainder.
+          output.write(b, offset, length);
+        }
+      } catch (RuntimeException e) {
+        logger.warn("Glean mod: DataStreams exception: {}, spaceRemaining: {}, offset: {}, length: {}, output size: {}", e, spaceRemaining, offset, length, output.size());
+        throw e;
       }
-      // Fill buffers completely.
-      while (length > maximumChunkSize) {
-        output.write(b, offset, maximumChunkSize);
-        offset += maximumChunkSize;
-        length -= maximumChunkSize;
-        internalFlush();
-      }
-      // Fill any remainder.
-      output.write(b, offset, length);
     }
 
     @Override
