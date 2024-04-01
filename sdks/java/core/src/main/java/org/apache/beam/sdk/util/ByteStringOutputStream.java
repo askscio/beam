@@ -22,6 +22,7 @@ import javax.annotation.concurrent.NotThreadSafe;
 import org.apache.beam.vendor.grpc.v1p60p1.com.google.protobuf.ByteString;
 import org.apache.beam.vendor.grpc.v1p60p1.com.google.protobuf.UnsafeByteOperations;
 import org.apache.beam.vendor.guava.v32_1_2_jre.com.google.common.base.Preconditions;
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
