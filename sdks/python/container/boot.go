@@ -164,11 +164,11 @@ func launchSDKProcess() error {
 		if err != nil {
 			return errors.New(
 				"failed to create a virtual environment. If running on Ubuntu systems, " +
-				"you might need to install `python3-venv` package. " +
-				"To run the SDK process in default environment instead, " +
-				"set the environment variable `RUN_PYTHON_SDK_IN_DEFAULT_ENVIRONMENT=1`. " +
-				"In custom Docker images, you can do that with an `ENV` statement. " +
-				fmt.Sprintf("Encountered error: %v", err))
+					"you might need to install `python3-venv` package. " +
+					"To run the SDK process in default environment instead, " +
+					"set the environment variable `RUN_PYTHON_SDK_IN_DEFAULT_ENVIRONMENT=1`. " +
+					"In custom Docker images, you can do that with an `ENV` statement. " +
+					fmt.Sprintf("Encountered error: %v", err))
 		}
 		cleanupFunc := func() {
 			os.RemoveAll(venvDir)
@@ -238,9 +238,11 @@ func launchSDKProcess() error {
 		childPids.canceled = true
 		for _, pid := range childPids.v {
 			go func(pid int) {
+				logger.Printf(ctx, "Sending SIGTERM to worker process %v with 120 timeout", pid)
 				// This goroutine will be canceled if the main process exits before the 5 seconds
 				// have elapsed, i.e., as soon as all subprocesses have returned from Wait().
-				time.Sleep(5 * time.Second)
+				time.Sleep(120 * time.Second)
+				logger.Printf(ctx, "Finished SIGTERM to worker process %v with 120 timeout, killing", pid)
 				if err := syscall.Kill(-pid, syscall.SIGKILL); err == nil {
 					logger.Printf(ctx, "Worker process %v did not respond, killed it.", pid)
 				}
