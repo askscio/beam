@@ -102,21 +102,29 @@ public class SdkWorkerStatusServer {
   static class WorkerStatusHandler implements HttpHandler {
     @Override
     public void handle(HttpExchange exchange) throws IOException {
-      BeamWorkerStatusGrpcService statusGrpcService = BeamWorkerStatusGrpcService.getInstance();
-      Map<String, String> allStatuses =
-          statusGrpcService.getAllWorkerStatuses(10, TimeUnit.SECONDS);
-      StringBuilder sb = new StringBuilder();
-      for (Map.Entry<String, String> entry : allStatuses.entrySet()) {
-        sb.append(entry.getKey());
-        sb.append("\n");
-        sb.append(entry.getValue());
-        sb.append("\n");
-      }
+      try {
+        BeamWorkerStatusGrpcService statusGrpcService = BeamWorkerStatusGrpcService.getInstance();
+        if (statusGrpcService != null) {
+          Map<String, String> allStatuses =
+              statusGrpcService.getAllWorkerStatuses(10, TimeUnit.SECONDS);
+          StringBuilder sb = new StringBuilder();
+          for (Map.Entry<String, String> entry : allStatuses.entrySet()) {
+            sb.append(entry.getKey());
+            sb.append("\n");
+            sb.append(entry.getValue());
+            sb.append("\n");
+          }
 
-      String response = sb.toString();
-      exchange.sendResponseHeaders(200, response.length());
-      try (OutputStream os = exchange.getResponseBody()) {
-        os.write(response.getBytes(StandardCharsets.UTF_8));
+          String response = sb.toString();
+          exchange.sendResponseHeaders(200, response.length());
+          try (OutputStream os = exchange.getResponseBody()) {
+            os.write(response.getBytes(StandardCharsets.UTF_8));
+          }
+        } else {
+          LOG.info("BeamWorkerStatusGrpcService is not running.");
+        }
+      } catch (Exception e) {
+        LOG.warn("Exception when handling workerStatusRequest " + e.getMessage());
       }
     }
   }
