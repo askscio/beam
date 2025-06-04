@@ -19,7 +19,9 @@ package org.apache.beam.runners.flink.translation.functions;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import org.apache.beam.runners.flink.translation.worker.SdkWorkerStatusServer;
 import org.apache.beam.runners.fnexecution.control.DefaultExecutableStageContext;
+import org.apache.beam.runners.fnexecution.control.DefaultJobBundleFactory;
 import org.apache.beam.runners.fnexecution.control.ExecutableStageContext;
 import org.apache.beam.runners.fnexecution.control.ReferenceCountingExecutableStageContextFactory;
 import org.apache.beam.runners.fnexecution.provisioning.JobInfo;
@@ -49,6 +51,10 @@ public class FlinkExecutableStageContextFactory implements ExecutableStageContex
         jobFactories.computeIfAbsent(
             jobInfo.jobId(),
             k -> {
+              if (DefaultJobBundleFactory.getEnableWorkerStatus(jobInfo)) {
+                SdkWorkerStatusServer.create();
+              }
+
               return ReferenceCountingExecutableStageContextFactory.create(
                   DefaultExecutableStageContext::create,
                   // Clean up context immediately if its class is not loaded on Flink parent

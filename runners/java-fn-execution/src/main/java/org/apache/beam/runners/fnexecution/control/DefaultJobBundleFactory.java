@@ -32,6 +32,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import javax.annotation.concurrent.ThreadSafe;
 import org.apache.beam.model.fnexecution.v1.ProvisionApi;
+import org.apache.beam.model.pipeline.v1.Endpoints.ApiServiceDescriptor;
 import org.apache.beam.model.pipeline.v1.RunnerApi.Environment;
 import org.apache.beam.model.pipeline.v1.RunnerApi.StandardEnvironments;
 import org.apache.beam.model.pipeline.v1.RunnerApi.StandardRunnerProtocols;
@@ -52,6 +53,7 @@ import org.apache.beam.runners.fnexecution.provisioning.JobInfo;
 import org.apache.beam.runners.fnexecution.provisioning.StaticGrpcProvisionService;
 import org.apache.beam.runners.fnexecution.state.GrpcStateService;
 import org.apache.beam.runners.fnexecution.state.StateRequestHandler;
+import org.apache.beam.runners.fnexecution.status.BeamWorkerStatusGrpcService;
 import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.fn.IdGenerator;
 import org.apache.beam.sdk.fn.IdGenerators;
@@ -263,6 +265,12 @@ public class DefaultJobBundleFactory implements JobBundleFactory {
       caches.add(new EnvironmentCacheAndLock(cache, refLock));
     }
     return caches.build();
+  }
+
+  public static boolean getEnableWorkerStatus(JobInfo jobInfo) {
+    PipelineOptions pipelineOptions =
+        PipelineOptionsTranslation.fromProto(jobInfo.pipelineOptions());
+    return pipelineOptions.as(PortablePipelineOptions.class).getEnableWorkerStatus();
   }
 
   private static int getEnvironmentExpirationMillis(JobInfo jobInfo) {
@@ -692,6 +700,19 @@ public class DefaultJobBundleFactory implements JobBundleFactory {
     provisionInfo.setControlEndpoint(controlServer.getApiServiceDescriptor());
     provisionInfo.addRunnerCapabilities(
         BeamUrns.getUrn(StandardRunnerProtocols.Enum.CONTROL_RESPONSE_ELEMENTS_EMBEDDING));
+
+    if (getEnableWorkerStatus(jobInfo)) {
+      GrpcFnServer<BeamWorkerStatusGrpcService> workerStatusServer =
+          GrpcFnServer.allocatePortAndCreateFor(
+              BeamWorkerStatusGrpcService.create(
+                  ApiServiceDescriptor.getDefaultInstance(),
+                  GrpcContextHeaderAccessorProvider.getHeaderAccessor()),
+              serverFactory);
+
+      provisionInfo.setStatusEndpoint(workerStatusServer.getApiServiceDescriptor());
+    }
+
+    LOG.info("FnServer provision info: " + provisionInfo.build());
     GrpcFnServer<StaticGrpcProvisionService> provisioningServer =
         GrpcFnServer.allocatePortAndCreateFor(
             StaticGrpcProvisionService.create(

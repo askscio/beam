@@ -39,6 +39,7 @@ import org.apache.beam.vendor.grpc.v1p60p1.io.grpc.stub.StreamObserver;
 import org.apache.beam.vendor.guava.v32_1_2_jre.com.google.common.annotations.VisibleForTesting;
 import org.apache.beam.vendor.guava.v32_1_2_jre.com.google.common.base.Strings;
 import org.apache.beam.vendor.guava.v32_1_2_jre.com.google.common.collect.ImmutableSet;
+import org.checkerframework.checker.nullness.qual.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,6 +58,8 @@ public class BeamWorkerStatusGrpcService extends BeamFnWorkerStatusImplBase impl
       Collections.synchronizedMap(new HashMap<>());
   private final AtomicBoolean isClosed = new AtomicBoolean();
 
+  private static @Nullable BeamWorkerStatusGrpcService CURRENT_INSTANCE = null;
+
   private BeamWorkerStatusGrpcService(
       ApiServiceDescriptor apiServiceDescriptor, HeaderAccessor headerAccessor) {
     this.headerAccessor = headerAccessor;
@@ -73,7 +76,13 @@ public class BeamWorkerStatusGrpcService extends BeamFnWorkerStatusImplBase impl
    */
   public static BeamWorkerStatusGrpcService create(
       ApiServiceDescriptor apiServiceDescriptor, HeaderAccessor headerAccessor) {
-    return new BeamWorkerStatusGrpcService(apiServiceDescriptor, headerAccessor);
+    CURRENT_INSTANCE = new BeamWorkerStatusGrpcService(apiServiceDescriptor, headerAccessor);
+    return CURRENT_INSTANCE;
+  }
+
+  /** Glean: return the current instance of {@link BeamWorkerStatusGrpcService}. */
+  public static @Nullable BeamWorkerStatusGrpcService getInstance() {
+    return CURRENT_INSTANCE;
   }
 
   @Override

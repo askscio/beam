@@ -140,4 +140,11 @@ public interface PortablePipelineOptions extends PipelineOptions, FileStagingOpt
   boolean getEnableHeapDumps();
 
   void setEnableHeapDumps(boolean enableHeapDumps);
+
+  @Description(
+      "If {@literal true} and PipelineOption tempLocation is set, show worker status before shutting")
+  @Default.Boolean(false)
+  boolean getEnableWorkerStatus();
+
+  void setEnableWorkerStatus(boolean enableWorkerStatus);
 }

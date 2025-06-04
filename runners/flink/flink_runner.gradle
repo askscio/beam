@@ -172,6 +172,7 @@ dependencies {
   implementation library.java.slf4j_api
   implementation library.java.joda_time
   implementation library.java.args4j
+  implementation library.java.failsafe
 
   // Flink 1.15 shades all remaining scala dependencies and therefor does not depend on a specific version of Scala anymore
   if (flink_version.compareTo("1.15") >= 0) {
