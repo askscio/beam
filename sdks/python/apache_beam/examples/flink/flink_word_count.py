@@ -25,66 +25,55 @@ This can only be used with the Flink portable runner.
 import argparse
 import logging
 import sys
+import re
 
 import apache_beam as beam
-from apache_beam.io.flink.flink_streaming_impulse_source import FlinkStreamingImpulseSource
 from apache_beam.options.pipeline_options import PipelineOptions
-from apache_beam.transforms import window
-from apache_beam.transforms.trigger import AccumulationMode
-from apache_beam.transforms.trigger import AfterProcessingTime
-from apache_beam.transforms.trigger import Repeatedly
 
-
-def split(s):
-  a = s.split("-")
-  return a[0], int(a[1])
-
-
-def count(x):
-  return x[0], sum(x[1])
-
-
-def apply_timestamp(element):
-  import time
-  yield window.TimestampedValue(element, time.time())
 
 
 def run(argv=None):
   """Build and run the pipeline."""
   args = [
-      "--runner=PortableRunner", "--job_endpoint=localhost:8099", "--streaming", "--environment_type=LOOPBACK"
+    "--runner=PortableRunner", "--job_endpoint=localhost:8099", "--environment_type=LOOPBACK", "--max_bundle_size=1",
   ]
   if argv:
     args.extend(argv)
 
   parser = argparse.ArgumentParser()
-  parser.add_argument(
-      '--count',
-      dest='count',
-      default=0,
-      help='Number of triggers to generate '
-      '(0 means emit forever).')
-  parser.add_argument(
-      '--interval_ms',
-      dest='interval_ms',
-      default=500,
-      help='Interval between records per parallel '
-      'Flink subtask.')
-
   known_args, pipeline_args = parser.parse_known_args(args)
-
   pipeline_options = PipelineOptions(pipeline_args)
 
   with beam.Pipeline(options=pipeline_options) as p:
 
-    messages = (
-        p | FlinkStreamingImpulseSource().set_message_count(
-            known_args.count).set_interval_ms(known_args.interval_ms))
+    # Read the text file[pattern] into a PCollection.
+    lines = p | beam.Create([
+        "Hello, world!",
+        "Hello, beam!",
+        "Hello, flink!",
+        "Hello, python!",
+        "Hello, java!",
+    ])
 
-    _ = (
-        messages | 'decode' >> beam.Map(lambda x: ('', 1))
-        | 'log' >> beam.Map(lambda x: logging.info("%d" % x[1])))
+    # Count the occurrences of each word.
+    counts = (
+        lines
+        | 'Split' >> (
+            beam.FlatMap(
+                lambda x: re.findall(r'[A-Za-z\']+', x)).with_output_types(str))
+        | 'PairWithOne' >> beam.Map(lambda x: (x, 1))
+        | 'GroupAndSum' >> beam.CombinePerKey(sum))
 
+    # Format the counts into a PCollection of strings.
+    def format_result(word_count):
+      (word, count) = word_count
+      return '%s: %s' % (word, count)
+
+    output = counts | 'Format' >> beam.Map(format_result)
+
+    # Write the output using a "Write" transform that has side effects.
+    # pylint: disable=expression-not-assigned
+    output | beam.Map(print)
 
 if __name__ == '__main__':
   logging.getLogger().setLevel(logging.INFO)

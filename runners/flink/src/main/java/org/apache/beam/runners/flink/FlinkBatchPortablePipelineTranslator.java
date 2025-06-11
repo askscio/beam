@@ -46,6 +46,7 @@ import org.apache.beam.runners.flink.translation.functions.FlinkPartialReduceFun
 import org.apache.beam.runners.flink.translation.functions.FlinkReduceFunction;
 import org.apache.beam.runners.flink.translation.types.CoderTypeInformation;
 import org.apache.beam.runners.flink.translation.types.KvKeySelector;
+import org.apache.beam.runners.flink.translation.utils.LargeRecordFilterFunction;
 import org.apache.beam.runners.flink.translation.wrappers.ImpulseInputFormat;
 import org.apache.beam.runners.fnexecution.provisioning.JobInfo;
 import org.apache.beam.runners.fnexecution.wire.WireCoders;
@@ -92,6 +93,8 @@ import org.apache.flink.api.java.operators.MapPartitionOperator;
 import org.apache.flink.api.java.operators.SingleInputUdfOperator;
 import org.apache.flink.api.java.operators.UnsortedGrouping;
 import org.checkerframework.checker.nullness.qual.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A translator that translates bounded portable pipelines into executable Flink pipelines.
@@ -119,6 +122,8 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 public class FlinkBatchPortablePipelineTranslator
     implements FlinkPortablePipelineTranslator<
         FlinkBatchPortablePipelineTranslator.BatchTranslationContext> {
+  private static final Logger LOG =
+      LoggerFactory.getLogger(FlinkBatchPortablePipelineTranslator.class);
 
   /**
    * Creates a batch translation context. The resulting Flink execution dag will live in a new
@@ -206,6 +211,7 @@ public class FlinkBatchPortablePipelineTranslator
 
     @Override
     public JobExecutionResult execute(String jobName) throws Exception {
+      LOG.info("Executing Flink batch job with name: {}", jobName);
       return getExecutionEnvironment().execute(jobName);
     }
 
@@ -515,8 +521,12 @@ public class FlinkBatchPortablePipelineTranslator
     TypeInformation<WindowedValue<KV<K, List<V>>>> partialReduceTypeInfo =
         new CoderTypeInformation<>(outputCoder, context.getPipelineOptions());
 
+    LOG.info("Add step to filter large records in GroupByKey");
+    DataSet<WindowedValue<KV<K, V>>> filteredDataSet =
+        inputDataSet.filter(new LargeRecordFilterFunction<>());
+
     Grouping<WindowedValue<KV<K, V>>> inputGrouping =
-        inputDataSet.groupBy(new KvKeySelector<>(inputElementCoder.getKeyCoder()));
+        filteredDataSet.groupBy(new KvKeySelector<>(inputElementCoder.getKeyCoder()));
 
     FlinkPartialReduceFunction<K, V, List<V>, ?> partialReduceFunction =
         new FlinkPartialReduceFunction<>(
