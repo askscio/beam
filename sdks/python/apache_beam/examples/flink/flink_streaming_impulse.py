@@ -52,7 +52,7 @@ def apply_timestamp(element):
 def run(argv=None):
   """Build and run the pipeline."""
   args = [
-      "--runner=PortableRunner", "--job_endpoint=localhost:8099", "--streaming", "--environment_type=LOOPBACK"
+      "--runner=PortableRunner", "--job_endpoint=localhost:8099", "--streaming"
   ]
   if argv:
     args.extend(argv)
@@ -83,6 +83,12 @@ def run(argv=None):
 
     _ = (
         messages | 'decode' >> beam.Map(lambda x: ('', 1))
+        | 'window' >> beam.WindowInto(
+            window.GlobalWindows(),
+            trigger=Repeatedly(AfterProcessingTime(5 * 1000)),
+            accumulation_mode=AccumulationMode.DISCARDING)
+        | 'group' >> beam.GroupByKey()
+        | 'count' >> beam.Map(count)
         | 'log' >> beam.Map(lambda x: logging.info("%d" % x[1])))
 
 
