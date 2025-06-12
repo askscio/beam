@@ -521,12 +521,14 @@ public class FlinkBatchPortablePipelineTranslator
     TypeInformation<WindowedValue<KV<K, List<V>>>> partialReduceTypeInfo =
         new CoderTypeInformation<>(outputCoder, context.getPipelineOptions());
 
-    LOG.info("Add step to filter large records in GroupByKey");
+    ///////////////////////// BEGIN GLEAN MODIFICATION ///////////////////////////////
+    LOG.info("Add step to filter large records before GroupBy");
     DataSet<WindowedValue<KV<K, V>>> filteredDataSet =
         inputDataSet.filter(new LargeRecordFilterFunction<>());
 
     Grouping<WindowedValue<KV<K, V>>> inputGrouping =
         filteredDataSet.groupBy(new KvKeySelector<>(inputElementCoder.getKeyCoder()));
+    ///////////////////////// END GLEAN MODIFICATION /////////////////////////////////
 
     FlinkPartialReduceFunction<K, V, List<V>, ?> partialReduceFunction =
         new FlinkPartialReduceFunction<>(
