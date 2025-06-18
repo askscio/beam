@@ -49,6 +49,7 @@ from apache_beam.portability.api import beam_fn_api_pb2
 from apache_beam.portability.api import beam_fn_api_pb2_grpc
 from apache_beam.runners.worker.channel_factory import GRPCChannelFactory
 from apache_beam.runners.worker.worker_id_interceptor import WorkerIdInterceptor
+from apache_beam.utils import retry
 
 if TYPE_CHECKING:
   import apache_beam.coders.slow_stream
@@ -64,6 +65,7 @@ _LOGGER = logging.getLogger(__name__)
 _DEFAULT_SIZE_FLUSH_THRESHOLD = 10 << 20  # 10MB
 _DEFAULT_TIME_FLUSH_THRESHOLD_MS = 0  # disable time-based flush by default
 _FLUSH_MAX_SIZE = (2 << 30) - 100  # 2GB less some overhead, protobuf/grpc limit
+_SENT_TO_MAX_QSIZE = 8000
 # Keep a set of completed instructions to discard late received data. The set
 # can have up to _MAX_CLEANED_INSTRUCTIONS items. See _GrpcDataChannel.
 _MAX_CLEANED_INSTRUCTIONS = 10000
@@ -457,7 +459,7 @@ class _GrpcDataChannel(DataChannel):
   def __init__(self, data_buffer_time_limit_ms=0):
     # type: (int) -> None
     self._data_buffer_time_limit_ms = data_buffer_time_limit_ms
-    self._to_send = queue.Queue()  # type: queue.Queue[DataOrTimers]
+    self._to_send = queue.Queue(maxsize=_SENT_TO_MAX_QSIZE)  # type: queue.Queue[DataOrTimers]
     self._received = collections.defaultdict(
         lambda: queue.Queue(maxsize=5)
     )  # type: DefaultDict[str, queue.Queue[DataOrTimers]]
@@ -579,6 +581,13 @@ class _GrpcDataChannel(DataChannel):
 
   def output_stream(self, instruction_id, transform_id):
     # type: (str, str) -> ClosableOutputStream
+    @retry.with_exponential_backoff(
+      initial_delay_secs=1.0,
+      max_delay_secs=600.0,  # 10 min
+      factor=4.0,
+      fuzz=False,
+      retry_filter=lambda e: isinstance(e, queue.Full)
+    )
     def add_to_send_queue(data):
       # type: (bytes) -> None
       if data:
@@ -586,8 +595,16 @@ class _GrpcDataChannel(DataChannel):
             beam_fn_api_pb2.Elements.Data(
                 instruction_id=instruction_id,
                 transform_id=transform_id,
-                data=data))
+                data=data),
+            timeout=1.0)
 
+    @retry.with_exponential_backoff(
+      initial_delay_secs=1.0,
+      max_delay_secs=600.0,  # 10 min
+      factor=4.0,
+      fuzz=False,
+      retry_filter=lambda e: isinstance(e, queue.Full)
+    )
     def close_callback(data):
       # type: (bytes) -> None
       add_to_send_queue(data)
@@ -596,7 +613,8 @@ class _GrpcDataChannel(DataChannel):
           beam_fn_api_pb2.Elements.Data(
               instruction_id=instruction_id,
               transform_id=transform_id,
-              is_last=True))
+              is_last=True),
+          timeout=1.0)
 
     return ClosableOutputStream.create(
         close_callback, add_to_send_queue, self._data_buffer_time_limit_ms)
@@ -608,6 +626,13 @@ class _GrpcDataChannel(DataChannel):
       timer_family_id  # type: str
   ):
     # type: (...) -> ClosableOutputStream
+    @retry.with_exponential_backoff(
+      initial_delay_secs=1.0,
+      max_delay_secs=600.0,  # 10 min
+      factor=4.0,
+      fuzz=False,
+      retry_filter=lambda e: isinstance(e, queue.Full)
+    )
     def add_to_send_queue(timer):
       # type: (bytes) -> None
       if timer:
@@ -617,8 +642,16 @@ class _GrpcDataChannel(DataChannel):
                 transform_id=transform_id,
                 timer_family_id=timer_family_id,
                 timers=timer,
-                is_last=False))
+                is_last=False),
+            timeout=1.0)
 
+    @retry.with_exponential_backoff(
+      initial_delay_secs=1.0,
+      max_delay_secs=600.0,  # 10 min
+      factor=4.0,
+      fuzz=False,
+      retry_filter=lambda e: isinstance(e, queue.Full)
+    )
     def close_callback(timer):
       # type: (bytes) -> None
       add_to_send_queue(timer)
@@ -627,7 +660,8 @@ class _GrpcDataChannel(DataChannel):
               instruction_id=instruction_id,
               transform_id=transform_id,
               timer_family_id=timer_family_id,
-              is_last=True))
+              is_last=True),
+          timeout=1.0)
 
     return ClosableOutputStream.create(
         close_callback, add_to_send_queue, self._data_buffer_time_limit_ms)
@@ -635,6 +669,8 @@ class _GrpcDataChannel(DataChannel):
   def _write_outputs(self):
     # type: () -> Iterator[beam_fn_api_pb2.Elements]
     stream_done = False
+    next_size_log_time = 0
+    total_size_bytes = 0
     while not stream_done:
       streams = [self._to_send.get()]
       try:
@@ -647,6 +683,13 @@ class _GrpcDataChannel(DataChannel):
           streams.append(data_or_timer)
       except queue.Empty:
         pass
+
+      current_time = time.time()
+      if next_size_log_time <= current_time:
+        qlen = self._to_send.qsize()
+        _LOGGER.info(f'to_send qsize: {qlen}. total send size: {total_size_bytes}')
+        next_size_log_time = current_time + 30
+
       if streams[-1] is self._WRITES_FINISHED:
         stream_done = True
         streams.pop()
