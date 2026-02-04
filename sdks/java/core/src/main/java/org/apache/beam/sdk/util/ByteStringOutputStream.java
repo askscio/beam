@@ -110,7 +110,8 @@ public final class ByteStringOutputStream extends OutputStream implements Append
         buffer = new byte[remainingSpaceInBuffer];
         bufferPos = 0;
       } else {
-        throw new RuntimeException("Glean mod: remainingSpaceInBuffer < 0: " + remainingSpaceInBuffer);
+        throw new RuntimeException(
+            "Glean mod: remainingSpaceInBuffer < 0: " + remainingSpaceInBuffer);
       }
     }
 
@@ -119,7 +120,12 @@ public final class ByteStringOutputStream extends OutputStream implements Append
       System.arraycopy(b, offset, buffer, bufferPos, length);
       bufferPos += length;
     } else {
-      logger.warn("Glean mod: arraycopy called with length <= 0: {}, offset: {}, buffer length: {}, bufferPos: {}", length, offset, buffer.length, bufferPos);
+      logger.warn(
+          "Glean mod: arraycopy called with length <= 0: {}, offset: {}, buffer length: {}, bufferPos: {}",
+          length,
+          offset,
+          buffer.length,
+          bufferPos);
     }
   }
 

@@ -141,7 +141,13 @@ public class DataStreams {
           output.write(b, offset, length);
         }
       } catch (RuntimeException e) {
-        logger.warn("Glean mod: DataStreams exception: {}, spaceRemaining: {}, offset: {}, length: {}, output size: {}", e, spaceRemaining, offset, length, output.size());
+        logger.warn(
+            "Glean mod: DataStreams exception: {}, spaceRemaining: {}, offset: {}, length: {}, output size: {}",
+            e,
+            spaceRemaining,
+            offset,
+            length,
+            output.size());
         throw e;
       }
     }
