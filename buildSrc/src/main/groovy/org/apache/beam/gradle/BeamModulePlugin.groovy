@@ -631,7 +631,8 @@ class BeamModulePlugin implements Plugin<Project> {
     def log4j2_version = "2.25.3"
     def nemo_version = "0.1"
     // [bomupgrader] determined by: io.grpc:grpc-netty, consistent with: google_cloud_platform_libraries_bom
-    def netty_version = "4.1.124.Final"
+    // Held above the bomupgrader's choice: netty-all below 4.1.129.Final carries CVE-2025-59419.
+    def netty_version = "4.1.137.Final"
     // [bomupgrader] determined by: io.opentelemetry:opentelemetry-sdk, consistent with: google_cloud_platform_libraries_bom
     def opentelemetry_version = "1.51.0"
     def postgres_version = "42.6.2"
